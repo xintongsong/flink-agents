@@ -19,7 +19,7 @@ from typing import Any, Dict, Sequence, Tuple, Type
 
 from flink_agents.api.agent import Agent
 from flink_agents.api.chat_message import ChatMessage, MessageRole
-from flink_agents.api.chat_models.chat_model import BaseChatModel
+from flink_agents.api.chat_models.chat_model import ChatModelSettings
 from flink_agents.api.decorators import action, chat_model, tool
 from flink_agents.api.events.event import InputEvent, OutputEvent
 from flink_agents.api.execution_environment import AgentsExecutionEnvironment
@@ -27,11 +27,12 @@ from flink_agents.api.resource import Resource, ResourceType
 from flink_agents.api.runner_context import RunnerContext
 
 
-class MockChatModelImpl(BaseChatModel):  # noqa: D101
+class MockChatModelImpl(ChatModelSettings):  # noqa: D101
     host: str
     desc: str
+    connection: str = "mock_connection"  # Required field for ChatModelSettings
 
-    def chat(self, messages: Sequence[ChatMessage]) -> ChatMessage: # noqa: D102
+    def chat(self, messages: Sequence[ChatMessage], **kwargs: Any) -> ChatMessage: # noqa: D102
         return ChatMessage(
             role=MessageRole.ASSISTANT,
             content=f"{messages[0].content} {self.host} {self.desc}",

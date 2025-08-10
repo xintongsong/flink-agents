@@ -18,7 +18,10 @@
 from abc import ABC
 from typing import Any, Callable, Dict, List, Tuple, Type
 
-from flink_agents.api.chat_models.chat_model import BaseChatModel
+from flink_agents.api.chat_models.chat_model import (
+    ChatModelConnection,
+    ChatModelSettings,
+)
 from flink_agents.api.events.event import Event
 from flink_agents.api.prompts.prompt import Prompt
 
@@ -39,10 +42,15 @@ class Agent(ABC):
                 def my_action(event: Event, ctx: RunnerContext) -> None:
                     action logic
 
+                @chat_model_connection
+                @staticmethod
+                def my_connection() -> Tuple[Type[ChatModelConnection], Dict[str, Any]]:
+                    return OllamaConnection, {"name": "conn", "model": "qwen2:7b"}
+
                 @chat_model
                 @staticmethod
-                def my_chat_model() -> Tuple[Type[BaseChatModel], Dict[str, Any]]:
-                    return ChatModel, {"name": xxx, "arg1": xxx}
+                def my_chat_model() -> Tuple[Type[ChatModelSettings], Dict[str, Any]]:
+                    return ChatModelSettings, {"name": "model", "connection": "conn"}
         * Add actions and resources to an Agent instance
         ::
 
@@ -50,20 +58,25 @@ class Agent(ABC):
             my_agent.add_action(name="my_action",
                                 events=[InputEvent],
                                 func=action_function)
+                    .add_chat_model_connection(name="my_connection",
+                                              connection=ChatModelConnection,
+                                              arg1=xxx)
                     .add_chat_model(name="my_chat_model",
-                                    chat_model=ChatModel
-                                    arg1=xxx)
+                                    chat_model=ChatModelSettings,
+                                    connection="my_connection")
     """
     _actions: Dict[str, Tuple[List[Type[Event]], Callable]]
     _prompts: Dict[str, Prompt]
     _tools: Dict[str, Callable]
-    _chat_models: Dict[str, Tuple[Type[BaseChatModel], Dict[str, Any]]]
+    _chat_model_connections: Dict[str, Tuple[Type[ChatModelConnection], Dict[str, Any]]]
+    _chat_models: Dict[str, Tuple[Type[ChatModelSettings], Dict[str, Any]]]
 
     def __init__(self) -> None:
         """Init method."""
         self._actions = {}
         self._prompts = {}
         self._tools = {}
+        self._chat_model_connections = {}
         self._chat_models = {}
 
     def add_action(self, name: str, events: List[Type[Event]], func: Callable) -> "Agent":
@@ -131,7 +144,31 @@ class Agent(ABC):
         self._tools[name] = func
         return self
 
-    def add_chat_model(self, name: str, chat_model: Type[BaseChatModel], **kwargs: Any) -> "Agent":
+    def add_chat_model_connection(self, name: str, connection: Type[ChatModelConnection], **kwargs: Any) -> "Agent":
+        """Add chat model connection to agent.
+
+        Parameters
+        ----------
+        name : str
+            The name of the chat model connection, should be unique in the same Agent.
+        connection: Type[ChatModelConnection]
+            The type of chat model connection.
+        **kwargs: Any
+            Initialize keyword arguments passed to the chat model connection.
+
+        Returns:
+        -------
+        Agent
+            The modified Agent instance.
+        """
+        if name in self._chat_model_connections:
+            msg = f"Chat model connection {name} already defined"
+            raise ValueError(msg)
+        kwargs["name"] = name
+        self._chat_model_connections[name] = (connection, kwargs)
+        return self
+
+    def add_chat_model(self, name: str, chat_model: Type[ChatModelSettings], **kwargs: Any) -> "Agent":
         """Add chat model to agent.
 
         Parameters

@@ -16,17 +16,23 @@
 # limitations under the License.
 #################################################################################
 import uuid
-from typing import Any, Dict, List, Sequence, Tuple, Type
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Type
 
 from flink_agents.api.agent import Agent
 from flink_agents.api.chat_message import ChatMessage, MessageRole
-from flink_agents.api.chat_models.chat_model import BaseChatModel
-from flink_agents.api.decorators import action, chat_model, prompt, tool
-from flink_agents.api.events.chat_event import ChatRequestEvent, ChatResponseEvent
-from flink_agents.api.events.event import (
-    InputEvent,
-    OutputEvent,
+from flink_agents.api.chat_models.chat_model import (
+    ChatModelConnection,
+    ChatModelSettings,
 )
+from flink_agents.api.decorators import (
+    action,
+    chat_model,
+    chat_model_connection,
+    prompt,
+    tool,
+)
+from flink_agents.api.events.chat_event import ChatRequestEvent, ChatResponseEvent
+from flink_agents.api.events.event import InputEvent, OutputEvent
 from flink_agents.api.execution_environment import AgentsExecutionEnvironment
 from flink_agents.api.prompts.prompt import Prompt
 from flink_agents.api.resource import ResourceType
@@ -34,7 +40,17 @@ from flink_agents.api.runner_context import RunnerContext
 from flink_agents.api.tools.tool import ToolMetadata, ToolType
 
 
-class MockChatModel(BaseChatModel):
+class MockChatModelConnection(ChatModelConnection):
+    """Mock ChatModelConnection for testing."""
+
+    def chat(self, messages: Sequence[ChatMessage], tools: Optional[List] = None, **kwargs: Any) -> ChatMessage:
+        """Mock chat implementation."""
+        # Simple echo implementation
+        content = "\n".join([message.content for message in messages])
+        return ChatMessage(role=MessageRole.ASSISTANT, content=content)
+
+
+class MockChatModel(ChatModelSettings):
     """Mock ChatModel for testing integrating prompt and tool."""
 
     __tools: List[ToolMetadata]
@@ -42,23 +58,23 @@ class MockChatModel(BaseChatModel):
     def __init__(self, /, **kwargs: Any) -> None:
         """Init method of MockChatModel."""
         super().__init__(**kwargs)
-        # bind tools
+        # Bind tools
         if self.tools is not None:
             tools = [
                 self.get_resource(tool_name, ResourceType.TOOL)
                 for tool_name in self.tools
             ]
             self.__tools = [tool.metadata for tool in tools]
-        # bind prompt
+        # Bind prompt
         if self.prompt is not None and isinstance(self.prompt, str):
             self.prompt = self.get_resource(self.prompt, ResourceType.PROMPT)
 
-    def chat(self, messages: Sequence[ChatMessage]) -> ChatMessage:
+    def chat(self, messages: Sequence[ChatMessage], **kwargs: Any) -> ChatMessage:
         """Generate tool call or response according to input."""
-        # generate tool call
+        # Generate tool call
         if "sum" in messages[-1].content:
             input = self.prompt.format_string(**messages[-1].extra_args)
-            # validate bind_tools
+            # Validate bind_tools
             assert self.__tools[0].name == "add"
             function = {"name": "add", "arguments": {"a": 1, "b": 2}}
             tool_call = {
@@ -69,7 +85,7 @@ class MockChatModel(BaseChatModel):
             return ChatMessage(
                 role=MessageRole.ASSISTANT, content=input, tool_calls=[tool_call]
             )
-        # generate response including tool call context
+        # Generate response including tool call context
         else:
             content = "\n".join([message.content for message in messages])
             return ChatMessage(role=MessageRole.ASSISTANT, content=content)
@@ -87,12 +103,21 @@ class MyAgent(Agent):
             text="Please call the appropriate tool to do the following task: {task}",
         )
 
+    @chat_model_connection
+    @staticmethod
+    def mock_connection() -> Tuple[Type[ChatModelConnection], Dict[str, Any]]:
+        """Mock connection for testing."""
+        return MockChatModelConnection, {
+            "name": "mock_connection",
+        }
+
     @chat_model
     @staticmethod
-    def chat_model() -> Tuple[Type[BaseChatModel], Dict[str, Any]]:
+    def new_chat_model() -> Tuple[Type[ChatModelSettings], Dict[str, Any]]:
         """ChatModel can be used in action."""
         return MockChatModel, {
-            "name": "chat_model",
+            "name": "new_chat_model",
+            "connection": "mock_connection",
             "prompt": "prompt",
             "tools": ["add"],
         }
@@ -126,7 +151,7 @@ class MyAgent(Agent):
         input = event.input
         ctx.send_event(
             ChatRequestEvent(
-                model="chat_model",
+                model="new_chat_model",
                 messages=[
                     ChatMessage(
                         role=MessageRole.USER, content=input, extra_args={"task": input}

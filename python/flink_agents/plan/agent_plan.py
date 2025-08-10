@@ -240,6 +240,20 @@ def _get_resource_providers(agent: Agent) -> List[ResourceProvider]:
                     kwargs=kwargs,
                 )
                 resource_providers.append(provider)
+        elif hasattr(value, "_is_chat_model_connection"):
+            if isinstance(value, staticmethod):
+                value = value.__func__
+
+            if callable(value):
+                clazz, kwargs = value()
+                provider = PythonResourceProvider(
+                    name=name,
+                    type=clazz.resource_type(),
+                    module=clazz.__module__,
+                    clazz=clazz.__name__,
+                    kwargs=kwargs,
+                )
+                resource_providers.append(provider)
         elif hasattr(value, "_is_tool"):
             if isinstance(value, staticmethod):
                 value = value.__func__
@@ -279,6 +293,18 @@ def _get_resource_providers(agent: Agent) -> List[ResourceProvider]:
 
     for name, chat_model in agent._chat_models.items():
         clazz, kwargs = chat_model
+        provider = PythonResourceProvider(
+            name=name,
+            type=clazz.resource_type(),
+            module=clazz.__module__,
+            clazz=clazz.__name__,
+            kwargs=kwargs,
+        )
+        resource_providers.append(provider)
+
+    # 添加对 chat_model_connections 的支持
+    for name, connection in agent._chat_model_connections.items():
+        clazz, kwargs = connection
         provider = PythonResourceProvider(
             name=name,
             type=clazz.resource_type(),
